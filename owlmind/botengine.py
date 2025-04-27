@@ -1,29 +1,6 @@
-##
-## OwlMind - Platform for Education and Experimentation with Generative Intelligent Systems
-## botmind.py :: Grettign Started Bot 
-## 
-#  
-# Copyright (c) 2024 Dr. Fernando Koch, The Generative Intelligence Lab @ FAU
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights 
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
-# Documentation and Getting Started:
-#    https://github.com/GenILab-FAU/owlmind
-#
-# Disclaimer: 
-# Generative AI has been used extensively while developing this package.
-# 
-
 from .agent import Agent, Plan
 from .context import Context
+from .llama_interface import run_llama_task  # 📣 Correct import here!
 
 ##
 ## BASE CLASS FOR BOTMESSAGE
@@ -38,18 +15,18 @@ class BotMessage(Context):
         
         # Load default fields and update with parameters
         default_fields = {
-            'layer1': 0,               # Server ID (guild ID or 0 for DM)
-            'layer2': 0,               # Channel ID (or 0 for DM)
-            'layer3': 0,               # Thread ID (0 if no thread)
-            'layer4': None,            # Author ID
-            'server_name': '',         # Server name (or '#dm' for direct message)
-            'channel_name': '',        # Channel name (or '#dm' for DM)
-            'thread_name': '',         # Thread name (empty if no thread)
-            'author_name': '',         # Author name (username)
-            'author_fullname': '',     # Author full name (global_name)
-            'message': '',             # Message content
-            'attachments': None,       # Attachments in the message
-            'reactions': None          # Reactions to the message
+            'layer1': 0,
+            'layer2': 0,
+            'layer3': 0,
+            'layer4': None,
+            'server_name': '',
+            'channel_name': '',
+            'thread_name': '',
+            'author_name': '',
+            'author_fullname': '',
+            'message': '',
+            'attachments': None,
+            'reactions': None
         }
 
         default_fields.update(kwargs)
@@ -57,7 +34,6 @@ class BotMessage(Context):
         # Initialize Context
         super().__init__(facts=default_fields)
         return 
-
 
 ##
 ## BASE CLASS FOR BOTBRAIN
@@ -75,7 +51,6 @@ class BotBrain(Agent):
     def process(self, context:BotMessage):
         super().process(context=context)
 
-
 ##
 ## SIMPLEBRAIN
 ##
@@ -84,15 +59,7 @@ import csv
 
 class SimpleBrain(BotBrain):
     """
-    SimpleBrain provide s avery simple Rule-based message processing from a list of predefined plans (Rules).
-
-    Methods:
-        load(file_name):
-            Loads plans from a CSV file. Each row in the file should contain conditions as columns (excluding 'action') and an 'action' column specifying the associated action.
-            See example for the CVS format in the method documentation.
-
-        process(context):
-            Processes a BotMessage context, matches it against the loaded plans, and assigns a response based on the best match.
+    SimpleBrain provides a very simple Rule-based + AI-driven message processor.
     """
         
     def __init__(self, id):
@@ -103,27 +70,6 @@ class SimpleBrain(BotBrain):
     def load(self, file_name):
         """
         Load plans from a CSV file.
-
-        The CSV file should have a structure where:
-            Header defines the FIELDS for matching and a column named 'response'
-            Each line contains the RgEx for matching the FIELD and the RESPONSE for that Rule.
-        
-        Where the FIELDS available include:
-
-        server_name     : Server name (or '#dm' for direct message)
-        channel_name    : Channel name (or '#dm' for DM)
-        thread_name     : Thread name (empty if no thread)
-        author_name     : Author name (username)
-        author_fullname : Author full name (global_name)
-        message         : Message content
-
-        Example of CSV file:
-
-        message, response
-        *hello*, Hi there!
-        *hello*, Hello!
-        *, I dont know how to respond to this message.
-
         """
         row_count = 0
         try:
@@ -143,17 +89,33 @@ class SimpleBrain(BotBrain):
 
     def process(self, context:BotMessage):
         """
-        Simplified logic to process incoming messages.
-        When the message (Context) matches any plan (Rules), collect the top-matching result.
+        Expanded logic: first check for AI tasks, then fallback to rule-based matching.
         """
-        if context in self.plans:
-            if self.debug: print(f'SimpleBrain: response={context.best_result}, alternatives={len(context.all_results)}, score={context.match_score}')
+        text = context['message'].lower()   # ✅ CORRECTED HERE
 
-            if self.is_action(context.best_result):
-                context.response = f'it should be an action here: {context.best_result[0], context.best_result[1]}'
-            else: 
-                context.response = context.best_result
-        return 
+        # ===> New Llama AI triggers
+        if text.startswith("summarize"):
+            input_text = text.replace("summarize", "", 1).strip()
+            context.response = run_llama_task("summarization", input_text)
 
+        elif text.startswith("flashcards"):
+            input_text = text.replace("flashcards", "", 1).strip()
+            context.response = run_llama_task("flashcards", input_text)
 
+        elif text.startswith("quiz"):
+            input_text = text.replace("quiz", "", 1).strip()
+            context.response = run_llama_task("quiz", input_text)
 
+        else:
+            # Fallback to RULE-BASED matching
+            if context in self.plans:
+                if self.debug: print(f'SimpleBrain: response={context.best_result}, alternatives={len(context.all_results)}, score={context.match_score}')
+
+                if self.is_action(context.best_result):
+                    context.response = f'it should be an action here: {context.best_result[0], context.best_result[1]}'
+                else: 
+                    context.response = context.best_result
+            else:
+                # No rule matched and no Llama task triggered
+                context.response = "I have no idea how to respond!"
+        return
